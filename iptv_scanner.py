@@ -760,7 +760,6 @@ for url in valid_urls:
 
         json_url = f"{url}"
        # 在JSON请求部分添加错误处理
-try:
     # --- response = requests.get(json_url, timeout=0.5)
     # +++ 修改为：
     response = requests.get(json_url, timeout=2.0, verify=False)
