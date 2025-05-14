@@ -1,6 +1,6 @@
 # 修正后的 monkey_patch 调用
 import eventlet
-eventlet.monkey_patch(socket=True, select=True, thread=True)  # 移除了 ssl 参数
+eventlet.monkey_patch(socket=True, select=True, thread=True)
 
 import time
 import datetime
@@ -12,6 +12,9 @@ import re
 import os
 import threading
 from queue import Queue
+
+# 初始化结果存储列表
+results = []
 
 urls = [
 "http://1.192.12.1:9901",
@@ -796,6 +799,7 @@ for url in valid_urls:
 
 channels = []
 
+# 确保在遍历 results 之前已经填充了数据
 for result in results:
     line = result.strip()
     if result:
