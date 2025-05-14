@@ -759,12 +759,8 @@ for url in valid_urls:
         url_x = f"{base_url}{ip_address}"
 
         json_url = f"{url}"
-       # 在JSON请求部分添加错误处理
-    # --- response = requests.get(json_url, timeout=0.5)
-    # +++ 修改为：
-    response = requests.get(json_url, timeout=2.0, verify=False)
-    response.raise_for_status()  # 如果状态码不是200会抛出异常
-    json_data = response.json()
+        response = requests.get(json_url, timeout=0.5)
+        json_data = response.json()
 except Exception as e:
     print(f"获取JSON失败: {json_url} - 错误: {str(e)}")  # +++ 调试输出
     continue
@@ -853,7 +849,7 @@ with open(tvlist_path, 'w', encoding='utf-8') as file:
 print(f"已写入{len(results)}条频道数据到tvlist.txt")  # +++ 调试输出
 
 # +++ 新增调试信息
-print("\n=== 最终文件检查 ===")
-print(f"ip.txt 存在: {os.path.exists(ip_path)}, 大小: {os.path.getsize(ip_path) if os.path.exists(ip_path) else 0}字节")
-print(f"tvlist.txt 存在: {os.path.exists(tvlist_path)}, 大小: {os.path.getsize(tvlist_path) if os.path.exists(tvlist_path) else 0}字节")
-print("当前目录内容:", os.listdir())
+# print("\n=== 最终文件检查 ===")
+# print(f"ip.txt 存在: {os.path.exists(ip_path)}, 大小: {os.path.getsize(ip_path) if os.path.exists(ip_path) else 0}字节")
+#　print(f"tvlist.txt 存在: {os.path.exists(tvlist_path)}, 大小: {os.path.getsize(tvlist_path) if os.path.exists(tvlist_path) else 0}字节")
+# print("当前目录内容:", os.listdir())
