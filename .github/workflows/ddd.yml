@@ -13,7 +13,6 @@ jobs:
       contents: write  # 必须添加这个权限才能推送更改
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
@@ -22,21 +21,17 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.12.3'
-      - name: 安装依赖
+          python-version: '3.11'  # Changed from 3.12.3 to 3.11 to avoid distutils issue
+
+      - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
+          pip install setuptools  # Required for distutils
           pip install \
             "requests==2.31.0" \
             "urllib3==1.26.0" \
             "eventlet==0.33.0" \
             "selenium==4.10.0"
-          pip list
-        
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests eventlet selenium
 
       - name: Run IPTV scanner
         run: |
