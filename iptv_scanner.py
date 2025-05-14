@@ -1,7 +1,14 @@
-# ！！！必须放在所有import之前！！！
 import eventlet
-eventlet.monkey_patch(all=False, socket=True, ssl=True, thread=True)  # 仅补丁必要模块
+eventlet.monkey_patch(socket=True, select=True, thread=True)
 
+# 手动添加 SSL 补丁
+import ssl
+try:
+    from eventlet.green.ssl import patch_ssl
+    patch_ssl()
+except ImportError:
+    pass
+    
 import time
 import datetime
 import concurrent.futures
