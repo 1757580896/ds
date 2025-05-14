@@ -759,8 +759,16 @@ for url in valid_urls:
         url_x = f"{base_url}{ip_address}"
 
         json_url = f"{url}"
-        response = requests.get(json_url, timeout=0.5)
-        json_data = response.json()
+       # 在JSON请求部分添加错误处理
+try:
+    # --- response = requests.get(json_url, timeout=0.5)
+    # +++ 修改为：
+    response = requests.get(json_url, timeout=2.0, verify=False)
+    response.raise_for_status()  # 如果状态码不是200会抛出异常
+    json_data = response.json()
+except Exception as e:
+    print(f"获取JSON失败: {json_url} - 错误: {str(e)}")  # +++ 调试输出
+    continue
 
         try:
             # 解析JSON文件，获取name和url字段
