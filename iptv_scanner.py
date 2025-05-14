@@ -1,6 +1,6 @@
-# ！！！必须放在所有import之前！！！
+# 修正后的 monkey_patch 调用
 import eventlet
-eventlet.monkey_patch(all=False, socket=True, ssl=True, thread=True)  # 仅补丁必要模块
+eventlet.monkey_patch(socket=True, select=True, thread=True)  # 移除了 ssl 参数
 
 import time
 import datetime
