@@ -1,12 +1,4 @@
-# +++ 必须放在所有import之前 +++
-import eventlet
-eventlet.monkey_patch(socket=True, select=True, thread=True)  # 禁用ssl补丁
 
-# 手动修复SSL递归问题
-import ssl
-from urllib3.util import ssl_
-ssl_.create_urllib3_context = lambda: ssl.create_default_context()
-# -----------------------------------
 
 # 原有其他import保持不变
 import time
@@ -700,21 +692,9 @@ def modify_urls(url):
 # --- 替换原有函数 ---
 def is_url_accessible(url):
     try:
-        # 使用独立Session避免SSL问题
-        session = requests.Session()
-        session.verify = False
-        session.trust_env = False
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0',
-            'Accept': '*/*',
-            'Connection': 'keep-alive'
-        })
-        
-        # 分阶段超时（连接3秒，读取5秒）
-        response = session.get(url, timeout=(3.0, 5.0))
+        response = requests.get(url, timeout=5, verify=False)
         return url if response.status_code == 200 else None
-    except Exception as e:
-        print(f"[DEBUG] 请求失败 {url[:50]}... - {type(e).__name__}: {str(e)[:100]}")
+    except:
         return None
 # -----------------------------------
 
