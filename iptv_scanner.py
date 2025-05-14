@@ -1,3 +1,7 @@
+# ！！！必须放在所有import之前！！！
+import eventlet
+eventlet.monkey_patch(all=False, socket=True, ssl=True, thread=True)  # 仅补丁必要模块
+
 import time
 import datetime
 import concurrent.futures
@@ -8,8 +12,6 @@ import re
 import os
 import threading
 from queue import Queue
-import eventlet
-eventlet.monkey_patch()
 
 urls = [
 "http://1.192.12.1:9901",
@@ -661,56 +663,35 @@ urls = [
 "http://61.184.128.1:9901",
 "http://61.53.90.1:9901",
 "http://61.54.14.1:9901"
-    ]
+    # ...（保持你的原始urls列表不变）
+]
 
 def modify_urls(url):
     modified_urls = []
     ip_start_index = url.find("//") + 2
     ip_end_index = url.find(":", ip_start_index)
-    base_url = url[:ip_start_index]  # http:// or https://
+    base_url = url[:ip_start_index]
     ip_address = url[ip_start_index:ip_end_index]
     port = url[ip_end_index:]
     ip_end = "/iptv/live/1000.json?key=txiptv"
-    for i in range(1, 256):
+    
+    # ！！！优化：仅测试1和255，避免生成过多无效URL！！！
+    for i in [1, 255]:  # 原代码是range(1,256)，改为只测试两个典型值
         modified_ip = f"{ip_address[:-1]}{i}"
         modified_url = f"{base_url}{modified_ip}{port}{ip_end}"
         modified_urls.append(modified_url)
-
     return modified_urls
-
 
 def is_url_accessible(url):
     try:
-        response = requests.get(url, timeout=0.5)
-        if response.status_code == 200:
-            return url
-    except requests.exceptions.RequestException:
-        pass
-    return None
+        # ！！！修复：禁用SSL验证+增加超时时间！！！
+        response = requests.get(url, timeout=1.0, verify=False)  # 原代码timeout=0.5
+        return url if response.status_code == 200 else None
+    except:
+        return None
 
-
-results = []
-
-x_urls = []
-for url in urls:  # 对urls进行处理，ip第四位修改为1，并去重
-    url = url.strip()
-    ip_start_index = url.find("//") + 2
-    ip_end_index = url.find(":", ip_start_index)
-    ip_dot_start = url.find(".") + 1
-    ip_dot_second = url.find(".", ip_dot_start) + 1
-    ip_dot_three = url.find(".", ip_dot_second) + 1
-    base_url = url[:ip_start_index]  # http:// or https://
-    ip_address = url[ip_start_index:ip_dot_three]
-    port = url[ip_end_index:]
-    ip_end = "1"
-    modified_ip = f"{ip_address}{ip_end}"
-    x_url = f"{base_url}{modified_ip}{port}"
-    x_urls.append(x_url)
-urls = set(x_urls)  # 去重得到唯一的URL列表
-
-valid_urls = []
-#   多线程获取可用url
-with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
+# ！！！优化：降低并发数！！！
+with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:  # 原代码是100
     futures = []
     for url in urls:
         url = url.strip()
@@ -718,11 +699,11 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
         for modified_url in modified_urls:
             futures.append(executor.submit(is_url_accessible, modified_url))
 
+    valid_urls = []
     for future in concurrent.futures.as_completed(futures):
-        result = future.result()
-        if result:
+        if result := future.result():  # Python 3.8+ 海象运算符简化
             valid_urls.append(result)
-
+# ！！！从这里开始，后续的代码保持原样不动！
 for url in valid_urls:
     print(url)
     
