@@ -20,6 +20,9 @@ import os
 import threading
 from queue import Queue
 
+# 初始化结果存储列表
+results = []
+
 urls = [
 "http://1.192.12.1:9901",
 "http://1.192.248.1:9901",
