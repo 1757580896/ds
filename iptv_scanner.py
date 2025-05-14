@@ -761,9 +761,6 @@ for url in valid_urls:
         json_url = f"{url}"
         response = requests.get(json_url, timeout=0.5)
         json_data = response.json()
-except Exception as e:
-    print(f"获取JSON失败: {json_url} - 错误: {str(e)}")  # +++ 调试输出
-    continue
 
         try:
             # 解析JSON文件，获取name和url字段
