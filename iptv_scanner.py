@@ -1,14 +1,3 @@
-import eventlet
-eventlet.monkey_patch(socket=True, select=True, thread=True)
-
-# 手动添加 SSL 补丁
-import ssl
-try:
-    from eventlet.green.ssl import patch_ssl
-    patch_ssl()
-except ImportError:
-    pass
-    
 import time
 import datetime
 import concurrent.futures
@@ -19,9 +8,15 @@ import re
 import os
 import threading
 from queue import Queue
+import eventlet
+from pathlib import Path  # +++ 新增导入
 
-# 初始化结果存储列表
-results = []
+# +++ 新增工作目录设置
+WORK_DIR = Path(__file__).parent
+os.chdir(WORK_DIR)
+print(f"当前工作目录: {os.getcwd()}")  # +++ 调试输出
+
+eventlet.monkey_patch()  # 保持原有位置
 
 urls = [
 "http://1.192.12.1:9901",
@@ -673,35 +668,59 @@ urls = [
 "http://61.184.128.1:9901",
 "http://61.53.90.1:9901",
 "http://61.54.14.1:9901"
-    # ...（保持你的原始urls列表不变）
-]
+    ]
 
 def modify_urls(url):
     modified_urls = []
     ip_start_index = url.find("//") + 2
     ip_end_index = url.find(":", ip_start_index)
-    base_url = url[:ip_start_index]
+    base_url = url[:ip_start_index]  # http:// or https://
     ip_address = url[ip_start_index:ip_end_index]
     port = url[ip_end_index:]
     ip_end = "/iptv/live/1000.json?key=txiptv"
-    
-    # ！！！优化：仅测试1和255，避免生成过多无效URL！！！
-    for i in [1, 255]:  # 原代码是range(1,256)，改为只测试两个典型值
+    for i in range(1, 256):
         modified_ip = f"{ip_address[:-1]}{i}"
         modified_url = f"{base_url}{modified_ip}{port}{ip_end}"
         modified_urls.append(modified_url)
+
     return modified_urls
+
 
 def is_url_accessible(url):
     try:
-        # ！！！修复：禁用SSL验证+增加超时时间！！！
-        response = requests.get(url, timeout=1.0, verify=False)  # 原代码timeout=0.5
-        return url if response.status_code == 200 else None
-    except:
-        return None
+        # --- response = requests.get(url, timeout=0.5)
+        # +++ 修改为以下内容：
+        response = requests.get(url, timeout=2.0, verify=False)  # 增加超时，禁用SSL验证
+        if response.status_code == 200:
+            print(f"成功访问: {url}")  # +++ 调试输出
+            return url
+    except requests.exceptions.RequestException as e:
+        print(f"访问失败: {url} - 错误: {str(e)}")  # +++ 调试输出
+    return None
 
-# ！！！优化：降低并发数！！！
-with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:  # 原代码是100
+
+results = []
+
+x_urls = []
+for url in urls:  # 对urls进行处理，ip第四位修改为1，并去重
+    url = url.strip()
+    ip_start_index = url.find("//") + 2
+    ip_end_index = url.find(":", ip_start_index)
+    ip_dot_start = url.find(".") + 1
+    ip_dot_second = url.find(".", ip_dot_start) + 1
+    ip_dot_three = url.find(".", ip_dot_second) + 1
+    base_url = url[:ip_start_index]  # http:// or https://
+    ip_address = url[ip_start_index:ip_dot_three]
+    port = url[ip_end_index:]
+    ip_end = "1"
+    modified_ip = f"{ip_address}{ip_end}"
+    x_url = f"{base_url}{modified_ip}{port}"
+    x_urls.append(x_url)
+urls = set(x_urls)  # 去重得到唯一的URL列表
+
+valid_urls = []
+#   多线程获取可用url
+with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
     futures = []
     for url in urls:
         url = url.strip()
@@ -709,19 +728,24 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:  # 原�
         for modified_url in modified_urls:
             futures.append(executor.submit(is_url_accessible, modified_url))
 
-    valid_urls = []
     for future in concurrent.futures.as_completed(futures):
-        if result := future.result():  # Python 3.8+ 海象运算符简化
+        result = future.result()
+        if result:
             valid_urls.append(result)
-# ！！！从这里开始，后续的代码保持原样不动！
+
 for url in valid_urls:
     print(url)
     
 now_today = datetime.date.today()
-with open("ip.txt", 'a', encoding='utf-8') as file:
-    file.write(f"{now_today}更新\n")
+# --- with open("ip.txt", 'a', encoding='utf-8') as file:
+# +++ 替换为：
+ip_path = WORK_DIR / "ip.txt"
+print(f"准备写入IP文件到: {ip_path}")  # +++ 调试输出
+with open(ip_path, 'w', encoding='utf-8') as file:  # 改为'w'模式覆盖写入
+    file.write(f"{datetime.date.today()}更新\n")
     for url in valid_urls:
         file.write(url + "\n")
+print(f"已写入{len(valid_urls)}个URL到ip.txt")  # +++ 调试输出
         
 # 遍历网址列表，获取JSON文件并解析
 for url in valid_urls:
@@ -812,7 +836,17 @@ for result in results:
         channel_name, channel_url = result.split(',')
         channels.append((channel_name, channel_url))
     print(result)
-with open("tvlist.txt", 'w', encoding='utf-8') as file:
+# --- with open("tvlist.txt", 'w', encoding='utf-8') as file:
+# +++ 替换为：
+tvlist_path = WORK_DIR / "tvlist.txt"
+with open(tvlist_path, 'w', encoding='utf-8') as file:
     for result in results:
         if result:
             file.write(result + "\n")
+print(f"已写入{len(results)}条频道数据到tvlist.txt")  # +++ 调试输出
+
+# +++ 新增调试信息
+print("\n=== 最终文件检查 ===")
+print(f"ip.txt 存在: {os.path.exists(ip_path)}, 大小: {os.path.getsize(ip_path) if os.path.exists(ip_path) else 0}字节")
+print(f"tvlist.txt 存在: {os.path.exists(tvlist_path)}, 大小: {os.path.getsize(tvlist_path) if os.path.exists(tvlist_path) else 0}字节")
+print("当前目录内容:", os.listdir())
