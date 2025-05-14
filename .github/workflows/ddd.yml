@@ -1,20 +1,22 @@
-name: itvlist
+name: IPTV List Updater
 
 on:
   schedule:
-    - cron: '0 21 * * *'
+    - cron: '0 21 * * *'  # 每天UTC时间21:00运行
   workflow_dispatch:
 
 jobs:
-  build:
+  update:
     runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write  # 必须添加这个权限才能推送更改
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # 获取完整历史记录
-          token: ${{ secrets.GITHUB_TOKEN }}  # 使用GITHUB_TOKEN
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -22,28 +24,38 @@ jobs:
           python-version: '3.12.3'
 
       - name: Install dependencies
-        run: pip install requests eventlet selenium
-
-      - name: Run scanner
         run: |
-          cd ${{ github.workspace }}
+          python -m pip install --upgrade pip
+          pip install requests eventlet selenium
+
+      - name: Run IPTV scanner
+        run: |
+          echo "当前目录内容:"
+          ls -la
           python iptv_scanner.py
-          ls -la  # 调试：列出生成的文件
+          echo "运行后目录内容:"
+          ls -la
+          echo "文件内容预览:"
+          head -n 5 ip.txt tvlist.txt || echo "文件不存在"
 
       - name: Commit and push changes
         run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
+          # 配置Git
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
           
-          # 检查是否有文件变更
+          # 检查变更
           git status
+          git diff
+          
+          # 添加并提交变更
           git add ip.txt tvlist.txt
           
-          # 仅当有变更时才提交
           if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "Auto-update IPTV list [skip ci]"
+            git commit -m "自动更新IPTV列表 [skip ci]"
             git pull --rebase
             git push
+            echo "变更已推送"
           else
-            echo "No changes to commit"
+            echo "没有变更需要提交"
           fi
