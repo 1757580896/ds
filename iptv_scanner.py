@@ -1,12 +1,20 @@
-import asyncio
-import aiohttp
-import re
-from urllib.parse import urlparse
-from collections import defaultdict
+# ！！！必须放在所有import之前！！！
+import eventlet
+eventlet.monkey_patch(all=False, socket=True, ssl=True, thread=True)  # 仅补丁必要模块
 
-# 原始URL列表（此处已缩短，实际使用时替换为完整列表）
+import time
+import datetime
+import concurrent.futures
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+import requests
+import re
+import os
+import threading
+from queue import Queue
+
 urls = [
-    "http://1.192.12.1:9901",
+"http://1.192.12.1:9901",
 "http://1.192.248.1:9901",
 "http://1.194.52.1:10086",
 "http://1.195.111.1:11190",
@@ -657,147 +665,144 @@ urls = [
 "http://61.54.14.1:9901"
 ]
 
-async def generate_modified_urls(original_url):
-    """生成修改后的IP地址序列"""
-    parsed = urlparse(original_url)
-    base_ip = '.'.join(parsed.hostname.split('.')[:-1])
-    return [
-      f"{parsed.scheme}://{base_ip}.{i}:{parsed.port}/iptv/live/1000.json?key=txiptv"
-        for i in range(1, 256)
-    ]
+def modify_urls(url):
+    modified_urls = []
+    ip_start_index = url.find("//") + 2
+    ip_end_index = url.find(":", ip_start_index)
+    base_url = url[:ip_start_index]
+    ip_address = url[ip_start_index:ip_end_index]
+    port = url[ip_end_index:]
+    ip_end = "/iptv/live/1000.json?key=txiptv"
+    
+    # ！！！优化：仅测试1和255，避免生成过多无效URL！！！
+    for i in [1, 255]:  # 原代码是range(1,256)，改为只测试两个典型值
+        modified_ip = f"{ip_address[:-1]}{i}"
+        modified_url = f"{base_url}{modified_ip}{port}{ip_end}"
+        modified_urls.append(modified_url)
+    return modified_urls
 
-async def check_node(session, url, semaphore):
-    """异步检查节点可用性"""
-    async with semaphore:
+def is_url_accessible(url):
+    try:
+        # ！！！修复：禁用SSL验证+增加超时时间！！！
+        response = requests.get(url, timeout=1.0, verify=False)  # 原代码timeout=0.5
+        return url if response.status_code == 200 else None
+    except:
+        return None
+
+# ！！！优化：降低并发数！！！
+with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:  # 原代码是100
+    futures = []
+    for url in urls:
+        url = url.strip()
+        modified_urls = modify_urls(url)
+        for modified_url in modified_urls:
+            futures.append(executor.submit(is_url_accessible, modified_url))
+
+    valid_urls = []
+    for future in concurrent.futures.as_completed(futures):
+        if result := future.result():  # Python 3.8+ 海象运算符简化
+            valid_urls.append(result)
+
+# ...（后续的文件写入和JSON解析逻辑保持不变）
+for url in valid_urls:
+    print(url)
+    
+now_today = datetime.date.today()
+with open("ip.txt", 'a', encoding='utf-8') as file:
+    file.write(f"{now_today}更新\n")
+    for url in valid_urls:
+        file.write(url + "\n")
+        
+# 遍历网址列表，获取JSON文件并解析
+for url in valid_urls:
+    try:
+        # 发送GET请求获取JSON文件，设置超时时间为0.5秒
+        ip_start_index = url.find("//") + 2
+        ip_dot_start = url.find(".") + 1
+        ip_index_second = url.find("/", ip_dot_start)
+        base_url = url[:ip_start_index]  # http:// or https://
+        ip_address = url[ip_start_index:ip_index_second]
+        url_x = f"{base_url}{ip_address}"
+
+        json_url = f"{url}"
+        response = requests.get(json_url, timeout=0.5)
+        json_data = response.json()
+
         try:
-            async with session.get(url, timeout=2) as response:
-                if response.status == 200:
-                    print(f"✅ Valid node: {url}")
-                    return url
-        except Exception as e:
-            return None
+            # 解析JSON文件，获取name和url字段
+            for item in json_data['data']:
+                if isinstance(item, dict):
+                    name = item.get('name')
+                    urlx = item.get('url')
+                    if ',' in urlx:
+                        urlx=f"aaaaaaaa"
+                    #if 'http' in urlx or 'udp' in urlx or 'rtp' in urlx:
+                    if 'http' in urlx:
+                        urld = f"{urlx}"
+                    else:
+                        urld = f"{url_x}{urlx}"
 
-async def fetch_channels(session, node_url, semaphore):
-  """获取频道列表"""
-    async with semaphore:
-        try:
-            async with session.get(node_url, timeout=2) as response:
-                data = await response.json()
-                base_url = f"{urlparse(node_url).scheme}://{urlparse(node_url).hostname}:{urlparse(node_url).port}"
-                
-                channels = []
-                for item in data.get('data', []):
-                  name = re.sub(r'\s+', '', item.get('name', ''))
-                    stream_url = item.get('url', '')
-                    
-                    # 标准化处理
-                    name = re.sub(r'CCTV(\d+)台', r'CCTV\1', name)
-                    name = re.sub(r'高清|标清|超清|HD', '', name)
-                    
-                    if not stream_url.startswith('http'):
-                        stream_url = f"{base_url}{stream_url}"
-                    
-                    channels.append((name, stream_url))
-                  return channels
-        except Exception as e:
-            return []
+                    if name and urlx:
+                        # 删除特定文字
+                        name = name.replace("cctv", "CCTV")
+                        name = name.replace("中央", "CCTV")
+                        name = name.replace("央视", "CCTV")
+                        name = name.replace("高清", "")
+                        name = name.replace("超高", "")
+                        name = name.replace("HD", "")
+                        name = name.replace("标清", "")
+                        name = name.replace("频道", "")
+                        name = name.replace("-", "")
+                        name = name.replace(" ", "")
+                        name = name.replace("PLUS", "+")
+                        name = name.replace("＋", "+")
+                        name = name.replace("(", "")
+                        name = name.replace(")", "")
+                        name = re.sub(r"CCTV(\d+)台", r"CCTV\1", name)
+                        name = name.replace("CCTV1综合", "CCTV1")
+                        name = name.replace("CCTV2财经", "CCTV2")
+                        name = name.replace("CCTV3综艺", "CCTV3")
+                        name = name.replace("CCTV4国际", "CCTV4")
+                        name = name.replace("CCTV4中文国际", "CCTV4")
+                        name = name.replace("CCTV4欧洲", "CCTV4")
+                        name = name.replace("CCTV5体育", "CCTV5")
+                        name = name.replace("CCTV6电影", "CCTV6")
+                        name = name.replace("CCTV7军事", "CCTV7")
+                        name = name.replace("CCTV7军农", "CCTV7")
+                        name = name.replace("CCTV7农业", "CCTV7")
+                        name = name.replace("CCTV7国防军事", "CCTV7")
+                        name = name.replace("CCTV8电视剧", "CCTV8")
+                        name = name.replace("CCTV9记录", "CCTV9")
+                        name = name.replace("CCTV9纪录", "CCTV9")
+                        name = name.replace("CCTV10科教", "CCTV10")
+                        name = name.replace("CCTV11戏曲", "CCTV11")
+                        name = name.replace("CCTV12社会与法", "CCTV12")
+                        name = name.replace("CCTV13新闻", "CCTV13")
+                        name = name.replace("CCTV新闻", "CCTV13")
+                        name = name.replace("CCTV14少儿", "CCTV14")
+                        name = name.replace("CCTV15音乐", "CCTV15")
+                        name = name.replace("CCTV16奥林匹克", "CCTV16")
+                        name = name.replace("CCTV17农业农村", "CCTV17")
+                        name = name.replace("CCTV17农业", "CCTV17")
+                        name = name.replace("CCTV5+体育赛视", "CCTV5+")
+                        name = name.replace("CCTV5+体育赛事", "CCTV5+")
+                        name = name.replace("CCTV5+体育", "CCTV5+")
+                        results.append(f"{name},{urld}")
+        except:
+            continue
+    except:
+        continue
 
-async def speed_test(session, channel_name, channel_url, semaphore):
-    """异步测速"""
-    async with semaphore:
-        try:
-            # 获取m3u8内容
-            async with session.get(channel_url, timeout=5) as response:
-                if response.status != 200:
-                  return None
-                
-                m3u8_text = await response.text()
-                ts_list = [line for line in m3u8_text.split('\n') 
-                          if line.strip() and not line.startswith('#')]
-                
-                if not ts_list:
-                    return None
-                
-                # 测试第一个片段
-                ts_url = f"{channel_url.rsplit('/', 1)[0]}/{ts_list[0]}"
-                start_time = asyncio.get_event_loop().time()
-              async with session.get(ts_url, timeout=5) as ts_response:
-                    content = await ts_response.read()
-                    elapsed = asyncio.get_event_loop().time() - start_time
-                
-                speed = len(content) / elapsed / 1024  # KB/s
-                return (channel_name, channel_url, speed)
-                
-        except Exception as e:
-            return None
 
-async def main():
-  # 初始化连接池
-    connector = aiohttp.TCPConnector(limit=0)  # 不限制连接数
-    async with aiohttp.ClientSession(connector=connector) as session:
-        # 阶段1：发现有效节点
-        print("🚀 Starting node discovery...")
-        discovery_sem = asyncio.Semaphore(100)
-        all_urls = []
-        for url in urls:
-            all_urls.extend(await generate_modified_urls(url))
-        
-        nodes = await asyncio.gather(*[
-            check_node(session, url, discovery_sem) 
-      for url in all_urls
-        ])
-        valid_nodes = [n for n in nodes if n]
-        print(f"🎯 Found {len(valid_nodes)} valid nodes")
-        
-        # 阶段2：收集频道
-        print("📡 Fetching channels...")
-        fetch_sem = asyncio.Semaphore(50)
-        channels = await asyncio.gather(*[
-            fetch_channels(session, node, fetch_sem) 
-      for node in valid_nodes
-        ])
-        all_channels = [c for sublist in channels for c in sublist if sublist]
-        print(f"📺 Total channels found: {len(all_channels)}")
-        
-        # 阶段3：测速筛选
-        print("⏱️ Speed testing...")
-        speed_sem = asyncio.Semaphore(20)
-        results = await asyncio.gather(*[
-            speed_test(session, name, url, speed_sem)
-            for name, url in all_channels
-        ])
-        valid_channels = [r for r in results if r]
-      # 分类整理
-        category = defaultdict(list)
-        for name, url, speed in valid_channels:
-            if speed < 500:  # 过滤低速源
-                continue
-            key = 'CCTV' if 'CCTV' in name else ('卫视' if '卫视' in name else '其他')
-            category[key].append((name, url, speed))
-        
-        # 排序去重（每个频道保留最快8个）
-        final = defaultdict(list)
-        for key, items in category.items():
-            groups = defaultdict(list)
-            for name, url, speed in items:
-                groups[name].append((speed, url))
-              
-            for name, candidates in groups.items():
-                sorted_candidates = sorted(candidates, reverse=True)[:8]
-                final[key].extend([
-                    (name, url) for _, url in sorted_candidates
-                ])
-              
-        # 生成结果文件
-        with open("itvlist.txt", "w", encoding="utf-8") as f:
-            for cat in ['CCTV', '卫视', '其他']:
-                f.write(f"{cat}频道,#genre#\n")
-                for name, url in final.get(cat, []):
-                    f.write(f"{name},{url}\n")
-                f.write("\n")
-        print("🎉 Done! Results saved to itvlist.txt")
-      
-if __name__ == "__main__":
-    asyncio.run(main())
-      
-      
+channels = []
+
+for result in results:
+    line = result.strip()
+    if result:
+        channel_name, channel_url = result.split(',')
+        channels.append((channel_name, channel_url))
+    print(result)
+with open("tvlist.txt", 'w', encoding='utf-8') as file:
+    for result in results:
+        if result:
+            file.write(result + "\n")
