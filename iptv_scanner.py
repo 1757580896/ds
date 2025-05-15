@@ -1,6 +1,3 @@
-
-
-# 原有其他import保持不变
 import time
 import datetime
 import concurrent.futures
@@ -689,14 +686,17 @@ def modify_urls(url):
     return modified_urls
 
 
-# --- 替换原有函数 ---
 def is_url_accessible(url):
     try:
-        response = requests.get(url, timeout=5, verify=False)
-        return url if response.status_code == 200 else None
-    except:
-        return None
-# -----------------------------------
+        # --- response = requests.get(url, timeout=0.5)
+        # +++ 修改为以下内容：
+        response = requests.get(url, timeout=2.0, verify=False)  # 增加超时，禁用SSL验证
+        if response.status_code == 200:
+            print(f"成功访问: {url}")  # +++ 调试输出
+            return url
+    except requests.exceptions.RequestException as e:
+        print(f"访问失败: {url} - 错误: {str(e)}")  # +++ 调试输出
+    return None
 
 
 results = []
@@ -720,37 +720,21 @@ urls = set(x_urls)  # 去重得到唯一的URL列表
 
 valid_urls = []
 #   多线程获取可用url
-# with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
-   # futures = []
-   # for url in urls:
-    #    url = url.strip()
-    #    modified_urls = modify_urls(url)
-    #    for modified_url in modified_urls:
-    #        futures.append(executor.submit(is_url_accessible, modified_url))
-
-  #  for future in concurrent.futures.as_completed(futures):
-    #    result = future.result()
-   #     if result:
-   #        valid_urls.append(result)
-
-# for url in valid_urls:
-#    print(url)
-# --- 替换原有with语句 ---
-with concurrent.futures.ThreadPoolExecutor(
-    max_workers=20,  # 从100降低到20
-    thread_name_prefix='iptv_scan'
-) as executor:
+with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
     futures = []
     for url in urls:
-        modified_urls = modify_urls(url)[:50]  # 每个IP只测前50个子地址
-        futures.extend(executor.submit(is_url_accessible, u) for u in modified_urls)
-    
-    valid_urls = []
+        url = url.strip()
+        modified_urls = modify_urls(url)
+        for modified_url in modified_urls:
+            futures.append(executor.submit(is_url_accessible, modified_url))
+
     for future in concurrent.futures.as_completed(futures):
-        if (result := future.result()):
+        result = future.result()
+        if result:
             valid_urls.append(result)
-            print(f"✅ 有效URL: {result[:80]}...")
-# -----------------------------------
+
+for url in valid_urls:
+    print(url)
     
 now_today = datetime.date.today()
 # --- with open("ip.txt", 'a', encoding='utf-8') as file:
@@ -866,22 +850,3 @@ print("\n=== 最终文件检查 ===")
 print(f"ip.txt 存在: {os.path.exists(ip_path)}, 大小: {os.path.getsize(ip_path) if os.path.exists(ip_path) else 0}字节")
 print(f"tvlist.txt 存在: {os.path.exists(tvlist_path)}, 大小: {os.path.getsize(tvlist_path) if os.path.exists(tvlist_path) else 0}字节")
 print("当前目录内容:", os.listdir())
-
-# +++ 新增主程序保护 +++
-if __name__ == "__main__":
-    try:
-        # 原有主逻辑代码
-        now_today = datetime.date.today()
-        with open("ip.txt", 'w', encoding='utf-8') as f:
-            f.write(f"{now_today}更新\n")
-            for url in valid_urls:
-                f.write(url + "\n")
-        
-        # ...（其他原有逻辑）
-        
-    except KeyboardInterrupt:
-        print("🛑 用户中断操作")
-    except Exception as e:
-        print(f"💥 致命错误: {type(e).__name__} - {str(e)}")
-        raise SystemExit(1)
-# -----------------------------------
